@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Dashboard de Administrador{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <h2 class="text-3xl font-bold text-gray-800 mb-6">Panel de Administración (Nóminas)</h2>
+    
+    <div class="mb-6 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+        <p class="text-lg font-medium text-indigo-700">
+            Tasa por Hora: <span class="font-bold">{{ pay_rate }}€</span> | 
+            Subsidio de Coche Predeterminado: <span class="font-bold">{{ default_allowance }}€</span>
+        </p>
+        <p class="text-sm text-indigo-600 mt-1">Puedes modificar el subsidio de coche para turnos específicos que ya usaron el coche.</p>
+    </div>
+
+    {% for waiter in payroll_data %}
+        <div class="card p-6 mb-8">
+            <h3 class="text-2xl font-semibold text-gray-800 border-b pb-2 mb-4">{{ waiter.username }}</h3>
+            
+            {# Ordenar años de forma descendente #}
+            {% for year, months in waiter.years.items()|sort(reverse=true) %}
+                <div class="mb-6">
+                    <h4 class="text-xl font-bold text-indigo-700 mt-4 mb-3">Año {{ year }}</h4>
+                    
+                    {# Ordenar meses de forma descendente #}
+                    {% for month, data in months.items()|sort(reverse=true) %}
+                        {% set month_name = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][month - 1] %}
+                        
+                        <div class="border border-gray-200 rounded-lg p-4 mb-4 bg-gray-50">
+                            <h5 class="text-lg font-semibold text-gray-900 mb-3">
+                                {{ month_name }} ({{ year }})
+                            </h5>
+                            <div class="grid grid-cols-2 gap-4 mb-3 text-sm">
+                                <p class="font-medium text-gray-700">Horas Totales Trabajadas:</p>
+                                <p class="font-bold text-right text-indigo-600">{{ data.total_hours_str }}</p>
+                                
+                                <p class="font-medium text-gray-700">Pago Base (€9/hr):</p>
+                                <p class="font-bold text-right text-indigo-600">
+                                    {{ '%.2f' % (data.total_pay - data.total_car_pay) }}€
+                                </p>
+
+                                <p class="font-medium text-gray-700">Extra Coche Total:</p>
+                                <p class="font-bold text-right text-indigo-600">{{ '%.2f' % data.total_car_pay }}€</p>
+                                
+                                <p class="text-lg font-bold text-gray-800 border-t pt-2 mt-2">Nómina Bruta Total del Mes:</p>
+                                <p class="text-lg font-bold text-right text-green-600 border-t pt-2 mt-2">
+                                    {{ '%.2f' % data.total_pay }}€
+                                </p>
+                            </div>
+
+                            <!-- Detalles de los Turnos Diarios -->
+                            <h6 class="text-md font-semibold mt-4 border-t pt-3">Detalles Diarios:</h6>
+                            <div class="space-y-2 mt-2">
+                                {# ELIMINADO: |sort(attribute='date', reverse=true) - Los datos ya están ordenados por Python #}
+                                {% for shift in data.shifts %} 
+                                    <div class="flex flex-wrap items-center justify-between p-3 border-b border-gray-100 last:border-b-0">
+                                        <div class="w-full md:w-1/3 text-sm font-medium">
+                                            {{ shift.date }} ({{ shift.time_in }} - {{ shift.time_out }})
+                                        </div>
+                                        <div class="w-1/2 md:w-1/6 text-sm text-center">
+                                            {{ shift.hours_decimal }} hrs
+                                        </div>
+                                        <div class="w-1/2 md:w-1/6 text-sm text-center text-indigo-500 font-medium">
+                                            {{ '%.2f' % shift.hourly_pay }}€
+                                        </div>
+                                        <div class="w-full md:w-1/3 flex items-center justify-end space-x-2">
+                                            {% if shift.car_used %}
+                                                <span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-blue-600 bg-blue-200">
+                                                    Coche: {{ '%.2f' % shift.car_allowance }}€
+                                                </span>
+
+                                                <!-- Formulario para modificar el subsidio -->
+                                                <form method="POST" action="{{ url_for('update_allowance', shift_id=shift.id) }}" class="flex items-center space-x-1">
+                                                    <input type="number" step="0.01" name="new_allowance" value="{{ '%.2f' % shift.car_allowance }}" 
+                                                           class="w-20 px-1 py-0.5 text-xs border rounded focus:ring-indigo-500 focus:border-indigo-500" required>
+                                                    <button type="submit" class="text-xs bg-yellow-400 hover:bg-yellow-500 text-black px-2 py-0.5 rounded-full transition">
+                                                        &#x270E;
+                                                    </button>
+                                                </form>
+                                            {% else %}
+                                                <span class="text-xs text-gray-500">Sin coche</span>
+                                            {% endif %}
+                                            <span class="font-bold text-lg text-green-700 ml-4">= {{ '%.2f' % shift.total_day_pay }}€</span>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <p class="text-gray-500">Aún no hay turnos registrados para {{ year }}.</p>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-gray-500">Este camarero aún no ha registrado ningún turno.</p>
+            {% endfor %}
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}
