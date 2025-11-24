@@ -28,6 +28,12 @@ MANAGER_EMAIL = 'fdepaulajodaracuna@gmail.com' # Email del administrador para re
 SMTP_SERVER = 'smtp.gmail.com' # Para Gmail
 SMTP_PORT = 587 # Puerto TLS
 
+# --- CONTEXTO GLOBAL PARA JINJA (SOLUCIÓN AL ERROR 'now' is undefined) ---
+@app.context_processor
+def inject_global_vars():
+    """Inyecta la función datetime.now() en todas las plantillas Jinja como 'now'."""
+    return dict(now=datetime.now)
+
 # --- MODELOS DE BASE DE DATOS ---
 class User(db.Model):
     """Modelo para Camareros y Administrador"""
@@ -83,15 +89,21 @@ def send_shift_notification(waiter_name, date_str, time_in_str, time_out_str):
     current_email_address = os.environ.get('EMAIL_ADDRESS', EMAIL_ADDRESS)
     
     try:
+        # Recuperar el último turno del usuario para obtener el estado de 'car_used'
+        # Esto se hace dentro de un app_context si fuera necesario, pero la función ya se llama
+        # en el contexto de una solicitud web, donde db está activo.
+        last_shift = Shift.query.filter_by(user_id=session.get('user_id')).order_by(Shift.id.desc()).first()
+        
+        car_status = 'No disponible'
+        if last_shift:
+            car_status = 'Sí' if last_shift.car_used else 'No'
+
         msg = MIMEText(
             f"El camarero {waiter_name} ha registrado un nuevo turno.\n"
             f"Fecha: {date_str}\n"
             f"Entrada: {time_in_str}\n"
             f"Salida: {time_out_str}\n"
-            # Necesitamos obtener el último shift del usuario actual, no el último shift global.
-            # Sin acceso directo al 'user' aquí, esta línea es arriesgada y puede fallar en concurrencia.
-            # Simplificamos asumiendo que el coche usado es el que se acaba de registrar.
-            f"Coche Usado: {'Sí' if Shift.query.filter_by(user_id=session.get('user_id')).order_by(Shift.id.desc()).first().car_used else 'No'}"
+            f"Coche Usado: {car_status}"
         )
         msg['Subject'] = f'NUEVO TURNO REGISTRADO: {waiter_name}'
         msg['From'] = current_email_address
@@ -146,8 +158,6 @@ def create_db_and_admin():
 
 
 # --- RUTAS DE LA APLICACIÓN ---
-
-# Eliminado @app.before_first_request
 
 @app.route('/')
 def index():
