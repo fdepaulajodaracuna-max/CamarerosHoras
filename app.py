@@ -12,7 +12,8 @@ app = Flask(__name__)
 # Configuración de la base de datos SQLite (se crea un archivo 'shifts.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///shifts.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'una_clave_secreta_fuerte') # Clave de sesión
+# Usar una variable de entorno segura en Render, o la clave por defecto
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'una_clave_secreta_fuerte') 
 db = SQLAlchemy(app)
 
 # Tasa de pago y configuración de administración
@@ -20,7 +21,7 @@ PAY_RATE_PER_HOUR = 9.00  # 9€ por hora
 DEFAULT_CAR_ALLOWANCE = 5.00 # Subsidio de coche predeterminado (por ejemplo, 5€)
 
 # Configuración de Email para Notificaciones (¡IMPORTANTE!)
-# Debes configurar la contraseña de aplicación o permitir acceso de apps menos seguras en Gmail.
+# Nota: En Render, es mejor usar variables de entorno para estos valores (ej: os.environ.get('EMAIL_PASSWORD'))
 EMAIL_ADDRESS = 'fdepaulajodaracuna@gmail.com' # <-- ¡TU EMAIL CONFIGURADO!
 EMAIL_PASSWORD = '97139586pacoO!' # <--- ¡ACTUALIZADO CON TU CONTRASEÑA!
 MANAGER_EMAIL = 'fdepaulajodaracuna@gmail.com' # Email del administrador para recibir notificaciones
@@ -77,22 +78,29 @@ class Shift(db.Model):
 
 def send_shift_notification(waiter_name, date_str, time_in_str, time_out_str):
     """Envía un email al administrador con la notificación del nuevo turno."""
+    # NOTA: En un entorno de producción como Render, es mejor usar os.environ.get() para la contraseña
+    current_email_password = os.environ.get('EMAIL_PASSWORD', EMAIL_PASSWORD)
+    current_email_address = os.environ.get('EMAIL_ADDRESS', EMAIL_ADDRESS)
+    
     try:
         msg = MIMEText(
             f"El camarero {waiter_name} ha registrado un nuevo turno.\n"
             f"Fecha: {date_str}\n"
             f"Entrada: {time_in_str}\n"
             f"Salida: {time_out_str}\n"
-            f"Coche Usado: {'Sí' if Shift.query.order_by(Shift.id.desc()).first().car_used else 'No'}"
+            # Necesitamos obtener el último shift del usuario actual, no el último shift global.
+            # Sin acceso directo al 'user' aquí, esta línea es arriesgada y puede fallar en concurrencia.
+            # Simplificamos asumiendo que el coche usado es el que se acaba de registrar.
+            f"Coche Usado: {'Sí' if Shift.query.filter_by(user_id=session.get('user_id')).order_by(Shift.id.desc()).first().car_used else 'No'}"
         )
         msg['Subject'] = f'NUEVO TURNO REGISTRADO: {waiter_name}'
-        msg['From'] = EMAIL_ADDRESS
+        msg['From'] = current_email_address
         msg['To'] = MANAGER_EMAIL
 
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()  # Usa TLS
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_ADDRESS, MANAGER_EMAIL, msg.as_string())
+            server.login(current_email_address, current_email_password)
+            server.sendmail(current_email_address, MANAGER_EMAIL, msg.as_string())
         print("Notificación por email enviada con éxito.")
     except Exception as e:
         print(f"Error al enviar la notificación por email. Verifica EMAIL_ADDRESS y EMAIL_PASSWORD: {e}")
@@ -120,21 +128,26 @@ def admin_required(f):
     decorated_function.__name__ = f.__name__
     return decorated_function
 
-# --- RUTAS DE LA APLICACIÓN ---
+# --- LÓGICA DE INICIALIZACIÓN DE DB ---
 
-@app.before_first_request
 def create_db_and_admin():
     """Crea la base de datos y un usuario administrador inicial si no existen."""
-    db.create_all()
+    # Debe ser llamado dentro de un contexto de aplicación
+    with app.app_context():
+        db.create_all()
 
-    # Crea un usuario administrador por defecto (¡CAMBIA ESTAS CREDENCIALES!)
-    if not User.query.filter_by(is_admin=True).first():
-        admin = User(username='admin', is_admin=True)
-        admin.set_password('jefe_secreto123')
-        db.session.add(admin)
-        db.session.commit()
-        print("¡ADMIN CREADO! Usuario: admin, Contraseña: jefe_secreto123. ¡CÁMBIALA INMEDIATAMENTE!")
+        # Crea un usuario administrador por defecto (¡CAMBIA ESTAS CREDENCIALES!)
+        if not User.query.filter_by(is_admin=True).first():
+            admin = User(username='admin', is_admin=True)
+            admin.set_password('jefe_secreto123')
+            db.session.add(admin)
+            db.session.commit()
+            print("¡ADMIN CREADO! Usuario: admin, Contraseña: jefe_secreto123. ¡CÁMBIALA INMEDIATAMENTE!")
 
+
+# --- RUTAS DE LA APLICACIÓN ---
+
+# Eliminado @app.before_first_request
 
 @app.route('/')
 def index():
@@ -348,8 +361,11 @@ def update_allowance(shift_id):
 
 
 # --- INICIO DE LA APLICACIÓN ---
+# Ejecutar la inicialización de la base de datos ANTES de que Gunicorn cargue la aplicación,
+# para evitar el error 'before_first_request' obsoleto.
+
+# Inicializa la base de datos y crea el admin
+create_db_and_admin()
+
 if __name__ == '__main__':
-    with app.app_context():
-        # Inicializa la base de datos y crea el admin
-        create_db_and_admin()
     app.run(debug=True) # debug=True es solo para desarrollo
