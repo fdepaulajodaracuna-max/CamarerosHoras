@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | {{ username }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h2 class="text-3xl font-bold text-gray-800 mb-6">Hola, {{ username }}</h2>
+    
+    <div class="card p-6 mb-8">
+        <h3 class="text-xl font-semibold text-indigo-600 mb-4">Registrar Horas de Turno</h3>
+        
+        <form method="POST" action="{{ url_for('waiter_dashboard') }}" class="space-y-4">
+            <!-- Campo de Fecha -->
+            <div>
+                <label for="date" class="block text-sm font-medium text-gray-700">Fecha del Turno</label>
+                <input type="date" id="date" name="date" required value="{{ today }}"
+                       class="mt-1 block w-full md:w-1/2 px-3 py-2 border border-gray-300 rounded-md shadow-sm">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Hora de Entrada -->
+                <div>
+                    <label for="time_in" class="block text-sm font-medium text-gray-700">Hora de Entrada</label>
+                    <input type="time" id="time_in" name="time_in" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+                <!-- Hora de Salida -->
+                <div>
+                    <label for="time_out" class="block text-sm font-medium text-gray-700">Hora de Salida</label>
+                    <input type="time" id="time_out" name="time_out" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm">
+                    <p class="text-xs text-gray-500 mt-1">Si el turno termina después de medianoche, la aplicación lo calculará automáticamente.</p>
+                </div>
+            </div>
+
+            <!-- Opción Coche -->
+            <div class="pt-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">¿Usaste tu coche para ir/volver?</label>
+                <div class="flex space-x-4">
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="car_used" value="yes" class="form-radio text-indigo-600" checked>
+                        <span class="ml-2">Sí</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="car_used" value="no" class="form-radio text-indigo-600">
+                        <span class="ml-2">No</span>
+                    </label>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary w-full md:w-auto">
+                Registrar Turno
+            </button>
+        </form>
+    </div>
+
+</div>
+{% endblock %}
