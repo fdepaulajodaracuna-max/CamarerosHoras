@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Fichaje y Nóminas (Firebase Persistente)</title>
+    <!-- Carga de Tailwind CSS para un diseño moderno y responsive -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos personalizados para la tipografía y diseño */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+        }
+        .container-wrapper {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        .card {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .btn-primary {
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container-wrapper">
+    <!-- Título y Estado de la Aplicación -->
+    <header class="text-center py-6">
+        <h1 class="text-3xl font-bold text-gray-800">Control de Horas Centralizado</h1>
+        <p id="auth-status" class="mt-2 text-sm font-medium text-blue-600">Base de Datos: registrocamareros (Firebase)</p>
+    </header>
+
+    <!-- Pestañas de Navegación -->
+    <div class="flex mb-6 space-x-2 p-1 bg-white rounded-xl card">
+        <button id="tab-waiter" onclick="showSection('waiter')" class="flex-1 py-2 text-sm font-semibold rounded-lg transition-colors bg-blue-500 text-white">
+            Registro de Horas
+        </button>
+        <button id="tab-admin" onclick="showSection('admin')" class="flex-1 py-2 text-sm font-semibold rounded-lg transition-colors text-gray-600 hover:bg-gray-100">
+            Panel de Administración
+        </button>
+    </div>
+
+    <!-- SECCIÓN DE REGISTRO DE CAMAREROS -->
+    <div id="section-waiter" class="tab-content">
+        <div class="bg-white p-6 rounded-xl card mb-6">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Registro Manual de Jornada</h2>
+            <p class="text-sm text-gray-500 mb-4">La jornada se guardará instantáneamente en la base de datos central de Firebase.</p>
+
+            <form id="waiter-form">
+                <div class="space-y-4">
+                    <!-- Nombre Completo -->
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">Nombre Completo</label>
+                        <input type="text" id="name" name="name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                    <!-- Número de Teléfono (para identificarte) -->
+                    <div>
+                        <label for="phone" class="block text-sm font-medium text-gray-700">Teléfono (Clave de registro)</label>
+                        <input type="tel" id="phone" name="phone" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: +34600123456">
+                    </div>
+
+                    <!-- Horas -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="entryTime" class="block text-sm font-medium text-gray-700">Hora de ENTRADA</label>
+                            <input type="time" id="entryTime" name="entryTime" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <div>
+                            <label for="exitTime" class="block text-sm font-medium text-gray-700">Hora de SALIDA</label>
+                            <input type="time" id="exitTime" name="exitTime" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- Opción de Coche -->
+                    <div class="flex items-start">
+                        <div class="flex items-center h-5">
+                            <input id="usedCar" name="usedCar" type="checkbox" class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded">
+                        </div>
+                        <div class="ml-3 text-sm">
+                            <label for="usedCar" class="font-medium text-gray-700">Usé mi coche para el trabajo</label>
+                            <p class="text-gray-500">Se añadirá la compensación establecida por el administrador (actualmente <span id="currentAllowanceWaiter">5.00</span>€).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botón de Registro -->
+                <button type="submit" id="submit-btn" class="mt-6 w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-lg text-lg font-semibold text-white bg-blue-600 btn-primary hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Registrar Jornada (Enviar a BD)
+                </button>
+            </form>
+            <p id="waiter-message" class="mt-4 text-center text-sm font-medium hidden"></p>
+        </div>
+
+        <p class="text-xs text-gray-400 text-center mt-8">Todos los registros se sincronizan en tiempo real.</p>
+    </div>
+
+    <!-- SECCIÓN DE ADMINISTRACIÓN -->
+    <div id="section-admin" class="tab-content hidden">
+        <!-- Bloque de Login Admin -->
+        <div id="admin-login-block" class="bg-white p-6 rounded-xl card mb-6">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Acceso a Administración</h2>
+            <p class="text-sm text-gray-500 mb-4">Ingresa el PIN de administrador. (PIN por defecto: **Venta2014**)</p>
+            <input type="password" id="admin-pin" placeholder="PIN de Administrador" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500">
+            <button onclick="checkAdminPin()" class="mt-4 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                Entrar
+            </button>
+            <p id="admin-error" class="mt-2 text-sm font-medium text-red-500 hidden">PIN Incorrecto.</p>
+        </div>
+
+        <!-- Panel de Administración (Oculto hasta el login) -->
+        <div id="admin-panel" class="hidden">
+            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded-md" role="alert">
+                <p class="font-bold">¡DATOS CENTRALIZADOS!</p>
+                <p class="text-sm">Viendo registros y nóminas de todos los dispositivos en tiempo real.</p>
+            </div>
+            
+            <!-- Configuración de Ajustes -->
+            <div class="bg-white p-6 rounded-xl card mb-6">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Ajustes de Nómina Diaria</h3>
+                
+                <!-- Compensación por Coche -->
+                <div class="mb-4">
+                    <label for="carAllowance" class="block text-sm font-medium text-gray-700">Compensación por Coche (€)</label>
+                    <div class="mt-1 flex rounded-md shadow-sm">
+                        <span class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">€</span>
+                        <input type="number" id="carAllowance" value="5.00" step="0.01" min="0" class="flex-1 block w-full rounded-none rounded-r-md px-3 py-2 border border-gray-300 focus:outline-none focus:ring-green-500 focus:border-green-500">
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Valor actual: <span id="currentAllowance">5.00</span>€/día</p>
+                </div>
+
+                <!-- Toggle de Multiples Registros -->
+                <div class="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                    <label for="multiShiftToggle" class="text-sm font-medium text-gray-700 cursor-pointer">
+                        Permitir Múltiples Registros (turnos) por día
+                    </label>
+                    <input type="checkbox" id="multiShiftToggle" class="h-5 w-5 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                </div>
+
+                <button onclick="saveSettings()" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                    Guardar Ajustes (Persistente)
+                </button>
+            </div>
+
+            <!-- Listado de Nóminas por Año/Mes -->
+            <div class="bg-white p-6 rounded-xl card mb-6">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Nóminas y Resúmenes (9€/hora)</h3>
+                <div id="payroll-loading" class="text-center py-4 text-gray-500">Cargando datos de nóminas...</div>
+                <div id="payroll-list" class="space-y-6">
+                    <!-- Los datos se inyectarán aquí -->
+                </div>
+            </div>
+
+            <!-- Listado de Registros Crudos -->
+            <div class="bg-white p-6 rounded-xl card">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Registros Crudos (BD Central)</h3>
+                <p class="text-sm text-gray-500 mb-2">Todos los fichajes en orden descendente.</p>
+                <div class="max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-2 bg-gray-50">
+                    <ul id="raw-records-list" class="text-sm space-y-1">
+                        <!-- Registros Crudos Generados por JS -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- BLOQUE DE LÓGICA DE LA APLICACIÓN Y FIREBASE -->
+<script type="module">
+    // =================================================================
+    // 🚨 CONFIGURACIÓN DE FIREBASE (PROPORCIONADA POR EL USUARIO) 🚨
+    // =================================================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyASBhuO-gxT0zkOE-AyxuIVA1P8pg6CMfY",
+        authDomain: "registrocamareros.firebaseapp.com",
+        projectId: "registrocamareros",
+        storageBucket: "registrocamareros.firebasestorage.app",
+        messagingSenderId: "961653237332",
+        appId: "1:961653237332:web:6053e3aef80e2aef916fc1",
+        // measurementId: "G-TXHBGKS5SW" // Ignorado, no necesario para Firestore
+    };
+    
+    // Firebase Imports
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, setDoc, doc } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js";
+
+    // Inicializar Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // --- VARIABLES GLOBALES Y CONFIGURACIÓN ---
+    const ADMIN_PIN_VAR = "Venta2014"; // PIN por defecto
+    const RECORDS_COLLECTION = 'records';
+    const SETTINGS_DOC_ID = 'general_settings';
+    const HOURLY_RATE = 9.00; // €/hora
+
+    let settings = {
+        carAllowance: 5.00,
+        enableMultiShift: false
+    };
+
+    let records = [];
+    let adminLoggedIn = false;
+
+    // --- FUNCIONES DE FIREBASE Y DATA ---
+
+    /**
+     * Inicializa la escucha de los ajustes del administrador.
+     */
+    const startSettingsListener = () => {
+        const settingsDocRef = doc(db, RECORDS_COLLECTION, SETTINGS_DOC_ID);
+
+        onSnapshot(settingsDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                settings = { ...settings, ...docSnap.data() };
+            } else {
+                // Si no existe, inicializa con los valores por defecto
+                saveSettings(settings); 
+            }
+            updateSettingsUI();
+        }, (error) => {
+            console.error("Error al escuchar ajustes:", error);
+        });
+    };
+
+    /** * Guarda los ajustes en Firestore. 
+     */
+    window.saveSettings = async (newSettings = null) => {
+        try {
+            const docRef = doc(db, RECORDS_COLLECTION, SETTINGS_DOC_ID);
+            
+            if (!newSettings) {
+                const newCarAllowance = parseFloat(document.getElementById('carAllowance').value);
+                const newMultiShiftToggle = document.getElementById('multiShiftToggle').checked;
+
+                if (isNaN(newCarAllowance) || newCarAllowance < 0) {
+                    alertMessage("Ingresa un valor válido para la compensación.", "admin-panel", "text-red-500");
+                    return;
+                }
+
+                settings.carAllowance = newCarAllowance;
+                settings.enableMultiShift = newMultiShiftToggle;
+            }
+
+            await setDoc(docRef, settings);
+            alertMessage(`Ajustes guardados en la base de datos central.`, "admin-panel", "text-green-600");
+            updateSettingsUI();
+
+        } catch (e) {
+            console.error("Error al guardar ajustes:", e);
+            alertMessage(`Error al guardar ajustes: ${e.message}`, "admin-panel", "text-red-500");
+        }
+    };
+
+    /**
+     * Inicializa la escucha de todos los registros de jornada.
+     */
+    const startRecordsListener = () => {
+        const recordsColRef = collection(db, RECORDS_COLLECTION);
+        const q = query(recordsColRef, orderBy("registeredAt", "desc"));
+
+        onSnapshot(q, (snapshot) => {
+            records = [];
+            snapshot.docs.forEach(doc => {
+                if (doc.id !== SETTINGS_DOC_ID) {
+                    // Firestore almacena timestamps/ISOs. Los convertimos a objetos legibles.
+                    const data = doc.data();
+                    
+                    // Manejar la conversión de marcas de tiempo si es necesario, aunque aquí guardamos ISO string
+                    // data.registeredAt = data.registeredAt?.toDate ? data.registeredAt.toDate().toISOString() : data.registeredAt;
+                    
+                    records.push({ id: doc.id, ...data });
+                }
+            });
+            
+            // Solo renderizar si el admin está logueado, sino solo actualiza la variable 'records'
+            if (adminLoggedIn) {
+                renderRawRecords();
+                renderPayroll();
+            }
+        }, (error) => {
+            console.error("Error al escuchar registros:", error);
+            if (adminLoggedIn) {
+                alertMessage(`Error de BD: ${error.message}`, "admin-panel", "text-red-500");
+            }
+        });
+    };
+
+
+    /** Manejar el Formulario del Camarero (Envío a Firestore) */
+    const handleWaiterForm = async (event) => {
+        event.preventDefault();
+        
+        const form = event.target;
+        const name = form.name.value.trim();
+        const phone = form.phone.value.trim();
+        const entryTimeStr = form.entryTime.value;
+        const exitTimeStr = form.exitTime.value;
+        const usedCar = form.usedCar.checked;
+        
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+        // 1. Validación de Registro Único 
+        if (!settings.enableMultiShift) {
+            const alreadyRegistered = records.some(
+                record => record.phone === phone && record.date === today
+            );
+            if (alreadyRegistered) {
+                alertMessage("Ya existe un registro para tu teléfono hoy.", "waiter-message", "text-red-500");
+                return;
+            }
+        }
+
+        // 2. Cálculo de Duración y Salario
+        const entry = new Date(today + 'T' + entryTimeStr + ':00');
+        let exit = new Date(today + 'T' + exitTimeStr + ':00');
+        
+        // Manejar turno nocturno (salida al día siguiente)
+        if (exit < entry) {
+            exit = new Date(exit);
+            exit.setDate(exit.getDate() + 1);
+        }
+
+        const durationMs = exit - entry;
+        const durationHours = durationMs / (1000 * 60 * 60);
+
+        if (durationHours <= 0) {
+            alertMessage("La hora de salida debe ser posterior a la de entrada.", "waiter-message", "text-red-500");
+            return;
+        }
+        
+        const basePay = durationHours * HOURLY_RATE;
+        const carAllowance = usedCar ? settings.carAllowance : 0;
+        const totalPay = basePay + carAllowance;
+        
+        const recordData = {
+            name,
+            phone,
+            entryTime: entryTimeStr,
+            exitTime: exitTimeStr,
+            date: today,
+            yearMonth: today.substring(0, 7),
+            durationHours: parseFloat(durationHours.toFixed(2)),
+            ratePerHour: HOURLY_RATE,
+            carAllowance: carAllowance,
+            totalPay: parseFloat(totalPay.toFixed(2)),
+            usedCar: usedCar,
+            registeredAt: new Date().toISOString(), // Marca de tiempo para ordenar
+            userId: phone 
+        };
+
+        // 3. Guardar en Firestore
+        try {
+            await addDoc(collection(db, RECORDS_COLLECTION), recordData);
+            
+            alertMessage(`Jornada registrada con éxito. Cobro estimado: ${totalPay.toFixed(2)}€ (${durationHours.toFixed(2)}h). El registro es visible ahora en todos los dispositivos de administrador.`, "waiter-message", "text-green-600");
+            form.reset();
+        } catch (e) {
+            console.error("Error al añadir documento: ", e);
+            alertMessage(`Error al registrar jornada: ${e.message}`, "waiter-message", "text-red-500");
+        }
+    };
+    
+    // --- FUNCIONES DE RENDERIZADO Y UTILIDAD ---
+
+    /** Actualizar UI de Ajustes */
+    const updateSettingsUI = () => {
+        document.getElementById('carAllowance').value = settings.carAllowance.toFixed(2);
+        document.getElementById('currentAllowance').textContent = settings.carAllowance.toFixed(2);
+        document.getElementById('currentAllowanceWaiter').textContent = settings.carAllowance.toFixed(2);
+        document.getElementById('multiShiftToggle').checked = settings.enableMultiShift;
+    };
+
+    /** Renderizar Registros Crudos (Admin) */
+    const renderRawRecords = () => {
+        const listEl = document.getElementById('raw-records-list');
+        listEl.innerHTML = '';
+        if (records.length === 0) {
+            listEl.innerHTML = '<li class="text-gray-500">No hay registros aún en la base de datos.</li>';
+            return;
+        }
+
+        records.forEach(record => {
+            const li = document.createElement('li');
+            li.className = 'p-2 border-b border-gray-100 flex justify-between';
+            const registrationDate = new Date(record.registeredAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            li.innerHTML = `
+                <div>
+                    <span class="font-semibold text-gray-800">${record.name}</span> (${record.phone})
+                    <span class="text-xs text-gray-500 block">${record.date} ${record.entryTime} - ${record.exitTime} (${record.durationHours.toFixed(2)}h)</span>
+                </div>
+                <div class="text-right">
+                    <span class="font-bold text-blue-600">${record.totalPay.toFixed(2)}€</span>
+                    ${record.usedCar ? '<span class="text-xs text-green-500 block">🚗 Coche</span>' : `<span class="text-xs text-gray-400 block">${registrationDate}</span>`}
+                </div>
+            `;
+            listEl.appendChild(li);
+        });
+    };
+
+    /** Calcular y Renderizar Nóminas Agrupadas (Admin) */
+    const renderPayroll = () => {
+        document.getElementById('payroll-loading').classList.add('hidden');
+        const payrollListEl = document.getElementById('payroll-list');
+        payrollListEl.innerHTML = '';
+        
+        if (records.length === 0) {
+            payrollListEl.innerHTML = '<p class="text-gray-500">No hay datos suficientes en la base de datos para generar nóminas.</p>';
+            return;
+        }
+
+        const payrollData = {};
+
+        records.forEach(record => {
+            const year = record.yearMonth.substring(0, 4);
+            const month = record.yearMonth.substring(5, 7);
+            const waiterKey = record.name + ' (' + record.phone + ')';
+
+            if (!payrollData[year]) payrollData[year] = {};
+            if (!payrollData[year][month]) payrollData[year][month] = {};
+            if (!payrollData[year][month][waiterKey]) {
+                payrollData[year][month][waiterKey] = {
+                    totalHours: 0,
+                    totalPay: 0,
+                    totalCarAllowance: 0
+                };
+            }
+
+            payrollData[year][month][waiterKey].totalHours += record.durationHours;
+            payrollData[year][month][waiterKey].totalPay += record.totalPay;
+            payrollData[year][month][waiterKey].totalCarAllowance += record.carAllowance;
+        });
+
+        const monthNames = { '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril', '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto', '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre' };
+        
+        Object.keys(payrollData).sort((a, b) => b - a).forEach(year => {
+            const yearBlock = document.createElement('div');
+            yearBlock.className = 'border-4 border-blue-100 rounded-xl p-4 bg-blue-50';
+            yearBlock.innerHTML = `<h4 class="text-xl font-bold text-blue-800 mb-4">Año ${year}</h4><div class="space-y-4" id="year-${year}"></div>`;
+            payrollListEl.appendChild(yearBlock);
+            
+            Object.keys(payrollData[year]).sort((a, b) => b - a).forEach(month => {
+                const monthBlock = document.createElement('div');
+                monthBlock.className = 'border border-gray-200 rounded-lg p-3 bg-white shadow-sm';
+                
+                let monthHTML = `<h5 class="text-lg font-semibold text-gray-700 mb-3">${monthNames[month] || month}</h5><ul class="space-y-2">`;
+                
+                Object.keys(payrollData[year][month]).forEach(waiter => {
+                    const data = payrollData[year][month][waiter];
+                    monthHTML += `
+                        <li class="border-b border-dashed pb-2 last:border-b-0 text-sm">
+                            <p class="font-bold text-gray-800">${waiter}</p>
+                            <div class="flex justify-between text-gray-600 mt-1">
+                                <span>Total Horas:</span>
+                                <span class="font-medium">${data.totalHours.toFixed(2)} h</span>
+                            </div>
+                            <div class="flex justify-between text-gray-600">
+                                <span>Compensación Coche:</span>
+                                <span class="font-medium text-green-600">${data.totalCarAllowance.toFixed(2)} €</span>
+                            </div>
+                            <div class="flex justify-between text-gray-800 mt-1 pt-1 border-t border-gray-100">
+                                <span class="font-extrabold">TOTAL A PAGAR:</span>
+                                <span class="font-extrabold text-2xl text-red-600">${data.totalPay.toFixed(2)} €</span>
+                            </div>
+                        </li>
+                    `;
+                });
+                
+                monthHTML += '</ul>';
+                monthBlock.innerHTML = monthHTML;
+                document.getElementById(`year-${year}`).appendChild(monthBlock);
+            });
+        });
+    };
+
+    /** Funciones de UI */
+    window.showSection = (sectionId) => {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.flex > button').forEach(el => {
+            el.classList.remove('bg-blue-500', 'text-white');
+            el.classList.add('text-gray-600', 'hover:bg-gray-100');
+        });
+
+        document.getElementById(`section-${sectionId}`).classList.remove('hidden');
+        document.getElementById(`tab-${sectionId}`).classList.remove('text-gray-600', 'hover:bg-gray-100');
+        document.getElementById(`tab-${sectionId}`).classList.add('bg-blue-500', 'text-white');
+    };
+
+    /** Validación de PIN de Admin */
+    window.checkAdminPin = () => {
+        const pin = document.getElementById('admin-pin').value;
+        const errorEl = document.getElementById('admin-error');
+        
+        if (pin === ADMIN_PIN_VAR) {
+            adminLoggedIn = true;
+            errorEl.classList.add('hidden');
+            document.getElementById('admin-login-block').classList.add('hidden');
+            document.getElementById('admin-panel').classList.remove('hidden');
+            
+            startRecordsListener(); // Empezar a escuchar los registros
+            alertMessage("Acceso de Admin concedido.", "admin-panel", "text-green-600");
+        } else {
+            errorEl.classList.remove('hidden');
+            errorEl.textContent = "PIN Incorrecto.";
+        }
+    };
+
+    /** Función de ayuda para mostrar mensajes temporales */
+    const alertMessage = (message, elementId, colorClass) => {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        
+        el.className = el.className.split(' ').filter(c => !c.startsWith('text-')).join(' ');
+        el.textContent = message;
+        el.className += ` mt-4 text-center text-sm font-medium ${colorClass}`;
+        el.classList.remove('hidden');
+        
+        setTimeout(() => {
+            el.classList.add('hidden');
+        }, 5000);
+    };
+
+    // --- INICIALIZACIÓN ---
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('waiter-form').addEventListener('submit', handleWaiterForm);
+        startSettingsListener();
+        
+        // La escucha de records se inicia al hacer login el administrador.
+    });
+
+    // Iniciar la escucha de records en segundo plano para el modo camarero
+    startRecordsListener(); 
+</script>
+
+</body>
+</html>
